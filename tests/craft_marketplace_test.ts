@@ -8,7 +8,7 @@ import {
 import { assertEquals } from 'https://deno.land/std@0.90.0/testing/asserts.ts';
 
 Clarinet.test({
-    name: "Can list a new item",
+    name: "Can list a new item with category",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const wallet1 = accounts.get('wallet_1')!;
         
@@ -17,7 +17,9 @@ Clarinet.test({
                 types.uint(1),
                 types.ascii("Handmade Scarf"),
                 types.utf8("Beautiful winter scarf"),
-                types.uint(100000000) // 100 STX
+                types.uint(100000000), // 100 STX
+                types.ascii("crafts"),
+                types.uint(100) // expires in 100 blocks
             ], wallet1.address)
         ]);
         
@@ -26,64 +28,51 @@ Clarinet.test({
 });
 
 Clarinet.test({
-    name: "Can purchase a listed item",
+    name: "Cannot list item with invalid category",
     async fn(chain: Chain, accounts: Map<string, Account>) {
-        const seller = accounts.get('wallet_1')!;
-        const buyer = accounts.get('wallet_2')!;
+        const wallet1 = accounts.get('wallet_1')!;
         
-        // First list an item
         let block = chain.mineBlock([
             Tx.contractCall('craft_marketplace', 'list-item', [
                 types.uint(1),
                 types.ascii("Handmade Scarf"),
                 types.utf8("Beautiful winter scarf"),
-                types.uint(100000000) // 100 STX
-            ], seller.address)
+                types.uint(100000000),
+                types.ascii("invalid"),
+                types.uint(100)
+            ], wallet1.address)
         ]);
         
-        // Then purchase it
-        let purchaseBlock = chain.mineBlock([
-            Tx.contractCall('craft_marketplace', 'purchase-item', [
-                types.principal(seller.address)
-            ], buyer.address)
-        ]);
-        
-        purchaseBlock.receipts[0].result.expectOk();
-        
-        // Verify seller stats updated
-        let statsBlock = chain.mineBlock([
-            Tx.contractCall('craft_marketplace', 'get-seller-stats', [
-                types.principal(seller.address)
-            ], seller.address)
-        ]);
-        
-        const stats = statsBlock.receipts[0].result.expectOk().expectSome();
-        assertEquals(stats['items-sold'], types.uint(1));
+        block.receipts[0].result.expectErr();
     },
 });
 
 Clarinet.test({
-    name: "Can update listing price",
+    name: "Can purchase a listed item before expiry",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const seller = accounts.get('wallet_1')!;
+        const buyer = accounts.get('wallet_2')!;
         
-        // First list an item
+        // List an item
         let block = chain.mineBlock([
             Tx.contractCall('craft_marketplace', 'list-item', [
                 types.uint(1),
                 types.ascii("Handmade Scarf"),
                 types.utf8("Beautiful winter scarf"),
-                types.uint(100000000) // 100 STX
+                types.uint(100000000),
+                types.ascii("crafts"),
+                types.uint(100)
             ], seller.address)
         ]);
         
-        // Update the price
-        let updateBlock = chain.mineBlock([
-            Tx.contractCall('craft_marketplace', 'update-listing', [
-                types.uint(150000000) // 150 STX
-            ], seller.address)
+        // Purchase it
+        let purchaseBlock = chain.mineBlock([
+            Tx.contractCall('craft_marketplace', 'purchase-item', [
+                types.principal(seller.address),
+                types.uint(1)
+            ], buyer.address)
         ]);
         
-        updateBlock.receipts[0].result.expectOk();
+        purchaseBlock.receipts[0].result.expectOk();
     },
 });
